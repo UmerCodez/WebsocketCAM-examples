@@ -6,3 +6,10 @@ Real-time hand keypoint detection using MediaPipe and OpenCV from a live video s
 Located at [/python/hand-keypoints](https://github.com/UmerCodez/WebsocketCAM-examples/tree/main/python/hand-keypoints)
 
 ![Alt Text](https://github.com/UmerCodez/WebsocketCAM-examples/blob/main/assets/hand-keypoint-detection.gif)
+
+### Live camera view in browser
+Real time camera view in brower over local network 
+
+Located at [/web/camera.html](https://github.com/UmerCodez/WebsocketCAM-examples/blob/main/web/camera.html)
+
+![Alt text](https://github.com/UmerCodez/WebsocketCAM-examples/blob/main/assets/camera-view-html.gif)
