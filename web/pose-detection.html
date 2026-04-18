@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Pose Detection</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .control-panel {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            min-width: 250px;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #f5576c;
+        }
+
+        button {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-connect {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+
+        .btn-connect:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(245, 87, 108, 0.4);
+        }
+
+        .btn-disconnect {
+            background: #f44336;
+            color: white;
+        }
+
+        .btn-disconnect:hover:not(:disabled) {
+            background: #d32f2f;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(244, 67, 54, 0.4);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .status {
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-weight: 500;
+        }
+
+        .status.disconnected {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        .status.connecting {
+            background: #fff3e0;
+            color: #e65100;
+        }
+
+        .status.connected {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .options {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .option-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .option-group label {
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+
+        select, input[type="range"] {
+            padding: 8px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+        }
+
+        input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .canvas-container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            position: relative;
+        }
+
+        .canvas-wrapper {
+            position: relative;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 400px;
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        canvas {
+            max-width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 18px;
+            text-align: center;
+        }
+
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .stat-item {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .keypoints-info {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .keypoints-info h3 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .keypoint-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 13px;
+        }
+
+        .keypoint-name {
+            font-weight: 600;
+            color: #555;
+        }
+
+        .keypoint-score {
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤸 Live Pose Detection</h1>
+            <p>Connect to your Android WebSocket stream and see real-time pose estimation</p>
+        </div>
+
+        <div class="control-panel">
+            <div class="input-group">
+                <input type="text" id="wsUrl" placeholder="Enter WebSocket URL (e.g., ws://192.168.1.100:8080)" value="ws://192.168.1.100:8080">
+                <button class="btn-connect" id="connectBtn" onclick="connect()">Connect</button>
+                <button class="btn-disconnect" id="disconnectBtn" onclick="disconnect()" disabled>Disconnect</button>
+            </div>
+
+            <div id="status" class="status disconnected">
+                Disconnected
+            </div>
+
+            <div class="options">
+                <div class="option-group">
+                    <label for="model">Model:</label>
+                    <select id="model" onchange="changeModel()">
+                        <option value="MoveNet">MoveNet (Lightning - Fast)</option>
+                        <option value="MoveNetThunder">MoveNet (Thunder - Accurate)</option>
+                        <option value="BlazePose">BlazePose (Full)</option>
+                        <option value="BlazePoseLite">BlazePose (Lite)</option>
+                    </select>
+                </div>
+
+                <div class="option-group">
+                    <label for="minConfidence">Min Confidence: <span id="confidenceValue">0.3</span></label>
+                    <input type="range" id="minConfidence" min="0" max="1" step="0.05" value="0.3" oninput="updateConfidence(this.value)">
+                </div>
+
+                <div class="option-group">
+                    <label for="keypointRadius">Keypoint Size: <span id="radiusValue">6</span></label>
+                    <input type="range" id="keypointRadius" min="2" max="15" step="1" value="6" oninput="updateRadius(this.value)">
+                </div>
+
+                <div class="option-group">
+                    <label for="lineWidth">Line Width: <span id="lineValue">2</span></label>
+                    <input type="range" id="lineWidth" min="1" max="8" step="1" value="2" oninput="updateLineWidth(this.value)">
+                </div>
+
+                <div class="option-group">
+                    <label class="checkbox-group">
+                        <input type="checkbox" id="showSkeleton" checked onchange="config.showSkeleton = this.checked">
+                        Show Skeleton
+                    </label>
+                </div>
+
+                <div class="option-group">
+                    <label class="checkbox-group">
+                        <input type="checkbox" id="showKeypoints" checked onchange="config.showKeypoints = this.checked">
+                        Show Keypoints
+                    </label>
+                </div>
+
+                <div class="option-group">
+                    <label class="checkbox-group">
+                        <input type="checkbox" id="showLabels" onchange="config.showLabels = this.checked">
+                        Show Labels
+                    </label>
+                </div>
+
+                <div class="option-group">
+                    <label class="checkbox-group">
+                        <input type="checkbox" id="showBoundingBox" onchange="config.showBoundingBox = this.checked">
+                        Show Bounding Box
+                    </label>
+                </div>
+            </div>
+
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="stat-label">FPS</div>
+                    <div class="stat-value" id="fps">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Frames Processed</div>
+                    <div class="stat-value" id="frameCount">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Inference Time</div>
+                    <div class="stat-value" id="inferenceTime">0ms</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">People Detected</div>
+                    <div class="stat-value" id="peopleCount">0</div>
+                </div>
+            </div>
+
+            <div class="keypoints-info" id="keypointsInfo" style="display: none;">
+                <h3>Detected Keypoints</h3>
+                <div id="keypointsList"></div>
+            </div>
+        </div>
+
+        <div class="canvas-container">
+            <div class="canvas-wrapper">
+                <canvas id="canvas"></canvas>
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <div>Loading model...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let detector = null;
+        let isProcessing = false;
+        let canvas, ctx;
+        let frameCount = 0;
+        let lastTime = Date.now();
+        let fps = 0;
+        let currentModel = 'MoveNet';
+        
+        const config = {
+            minConfidence: 0.3,
+            keypointRadius: 6,
+            lineWidth: 2,
+            showSkeleton: true,
+            showKeypoints: true,
+            showLabels: false,
+            showBoundingBox: false
+        };
+
+        // Define skeleton connections for different models
+        const POSE_CONNECTIONS = {
+            // MoveNet connections
+            moveNet: [
+                [5, 6], [5, 7], [7, 9], [6, 8], [8, 10],
+                [5, 11], [6, 12], [11, 12],
+                [11, 13], [13, 15], [12, 14], [14, 16]
+            ],
+            // BlazePose connections (simplified)
+            blazePose: [
+                [0, 1], [1, 2], [2, 3], [3, 7], [0, 4], [4, 5], [5, 6], [6, 8],
+                [9, 10], [11, 12], [11, 13], [13, 15], [15, 17], [15, 19], [15, 21],
+                [17, 19], [12, 14], [14, 16], [16, 18], [16, 20], [16, 22], [18, 20],
+                [11, 23], [12, 24], [23, 24], [23, 25], [24, 26], [25, 27], [26, 28],
+                [27, 29], [28, 30], [27, 31], [28, 32], [29, 31], [30, 32]
+            ]
+        };
+
+        async function initModel() {
+            const loading = document.getElementById('loading');
+            loading.style.display = 'block';
+            
+            try {
+                const modelType = document.getElementById('model').value;
+                
+                if (modelType === 'MoveNet') {
+                    const model = window.poseDetection.SupportedModels.MoveNet;
+                    const detectorConfig = {
+                        modelType: window.poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING
+                    };
+                    detector = await window.poseDetection.createDetector(model, detectorConfig);
+                    currentModel = 'moveNet';
+                } else if (modelType === 'MoveNetThunder') {
+                    const model = window.poseDetection.SupportedModels.MoveNet;
+                    const detectorConfig = {
+                        modelType: window.poseDetection.movenet.modelType.SINGLEPOSE_THUNDER
+                    };
+                    detector = await window.poseDetection.createDetector(model, detectorConfig);
+                    currentModel = 'moveNet';
+                } else if (modelType === 'BlazePose') {
+                    const model = window.poseDetection.SupportedModels.BlazePose;
+                    const detectorConfig = {
+                        runtime: 'tfjs',
+                        modelType: 'full'
+                    };
+                    detector = await window.poseDetection.createDetector(model, detectorConfig);
+                    currentModel = 'blazePose';
+                } else if (modelType === 'BlazePoseLite') {
+                    const model = window.poseDetection.SupportedModels.BlazePose;
+                    const detectorConfig = {
+                        runtime: 'tfjs',
+                        modelType: 'lite'
+                    };
+                    detector = await window.poseDetection.createDetector(model, detectorConfig);
+                    currentModel = 'blazePose';
+                }
+                
+                loading.style.display = 'none';
+                console.log('Pose detection model loaded successfully');
+            } catch (error) {
+                console.error('Error loading model:', error);
+                loading.innerHTML = '<div>Error loading model. Please refresh.</div>';
+            }
+        }
+
+        async function changeModel() {
+            if (detector) {
+                detector = null;
+                await initModel();
+            }
+        }
+
+        function connect() {
+            const url = document.getElementById('wsUrl').value;
+            
+            if (!url) {
+                alert('Please enter a WebSocket URL');
+                return;
+            }
+
+            updateStatus('connecting', 'Connecting...');
+            
+            try {
+                ws = new WebSocket(url);
+                ws.binaryType = 'arraybuffer';
+                
+                ws.onopen = () => {
+                    updateStatus('connected', 'Connected');
+                    document.getElementById('connectBtn').disabled = true;
+                    document.getElementById('disconnectBtn').disabled = false;
+                    console.log('WebSocket connected');
+                };
+                
+                ws.onmessage = async (event) => {
+                    if (isProcessing || !detector) return;
+                    
+                    isProcessing = true;
+                    
+                    try {
+                        const blob = new Blob([event.data], { type: 'image/jpeg' });
+                        const img = await createImageBitmap(blob);
+                        
+                        if (!canvas) {
+                            canvas = document.getElementById('canvas');
+                            ctx = canvas.getContext('2d');
+                        }
+                        
+                        if (canvas.width !== img.width || canvas.height !== img.height) {
+                            canvas.width = img.width;
+                            canvas.height = img.height;
+                        }
+                        
+                        ctx.drawImage(img, 0, 0);
+                        
+                        await performPoseDetection();
+                        
+                        updateStats();
+                    } catch (error) {
+                        console.error('Error processing frame:', error);
+                    }
+                    
+                    isProcessing = false;
+                };
+                
+                ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    updateStatus('disconnected', 'Connection error');
+                };
+                
+                ws.onclose = () => {
+                    updateStatus('disconnected', 'Disconnected');
+                    document.getElementById('connectBtn').disabled = false;
+                    document.getElementById('disconnectBtn').disabled = true;
+                    console.log('WebSocket disconnected');
+                };
+            } catch (error) {
+                console.error('Connection error:', error);
+                updateStatus('disconnected', 'Failed to connect');
+            }
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        async function performPoseDetection() {
+            const startTime = performance.now();
+            
+            const poses = await detector.estimatePoses(canvas);
+            
+            document.getElementById('peopleCount').textContent = poses.length;
+            
+            if (poses.length > 0) {
+                drawPoses(poses);
+                updateKeypointsInfo(poses[0]);
+            } else {
+                document.getElementById('keypointsInfo').style.display = 'none';
+            }
+            
+            const inferenceTime = Math.round(performance.now() - startTime);
+            document.getElementById('inferenceTime').textContent = inferenceTime + 'ms';
+        }
+
+        function drawPoses(poses) {
+            poses.forEach(pose => {
+                if (config.showBoundingBox && pose.box) {
+                    drawBoundingBox(pose.box);
+                }
+                
+                if (config.showSkeleton) {
+                    drawSkeleton(pose.keypoints);
+                }
+                
+                if (config.showKeypoints) {
+                    drawKeypoints(pose.keypoints);
+                }
+            });
+        }
+
+        function drawBoundingBox(box) {
+            ctx.strokeStyle = '#00ff00';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(box.xMin, box.yMin, box.width, box.height);
+        }
+
+        function drawKeypoints(keypoints) {
+            keypoints.forEach(keypoint => {
+                if (keypoint.score > config.minConfidence) {
+                    const { x, y, name } = keypoint;
+                    
+                    // Draw keypoint
+                    ctx.fillStyle = getKeypointColor(name);
+                    ctx.beginPath();
+                    ctx.arc(x, y, config.keypointRadius, 0, 2 * Math.PI);
+                    ctx.fill();
+                    
+                    // Draw inner circle for better visibility
+                    ctx.fillStyle = 'white';
+                    ctx.beginPath();
+                    ctx.arc(x, y, config.keypointRadius / 2, 0, 2 * Math.PI);
+                    ctx.fill();
+                    
+                    // Draw label if enabled
+                    if (config.showLabels) {
+                        ctx.fillStyle = 'white';
+                        ctx.strokeStyle = 'black';
+                        ctx.lineWidth = 3;
+                        ctx.font = '12px Arial';
+                        ctx.strokeText(name, x + 10, y - 10);
+                        ctx.fillText(name, x + 10, y - 10);
+                    }
+                }
+            });
+        }
+
+        function drawSkeleton(keypoints) {
+            const connections = POSE_CONNECTIONS[currentModel];
+            
+            ctx.strokeStyle = '#00ff00';
+            ctx.lineWidth = config.lineWidth;
+            
+            connections.forEach(([i, j]) => {
+                const kp1 = keypoints[i];
+                const kp2 = keypoints[j];
+                
+                if (kp1 && kp2 && 
+                    kp1.score > config.minConfidence && 
+                    kp2.score > config.minConfidence) {
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(kp1.x, kp1.y);
+                    ctx.lineTo(kp2.x, kp2.y);
+                    ctx.stroke();
+                }
+            });
+        }
+
+        function getKeypointColor(name) {
+            const colorMap = {
+                'nose': '#ff0000',
+                'left_eye': '#ff7f00',
+                'right_eye': '#ffff00',
+                'left_ear': '#00ff00',
+                'right_ear': '#0000ff',
+                'left_shoulder': '#4b0082',
+                'right_shoulder': '#9400d3',
+                'left_elbow': '#ff1493',
+                'right_elbow': '#00ced1',
+                'left_wrist': '#ff69b4',
+                'right_wrist': '#1e90ff',
+                'left_hip': '#32cd32',
+                'right_hip': '#ffa500',
+                'left_knee': '#ff4500',
+                'right_knee': '#00ff7f',
+                'left_ankle': '#dc143c',
+                'right_ankle': '#00bfff'
+            };
+            return colorMap[name] || '#ffffff';
+        }
+
+        function updateKeypointsInfo(pose) {
+            const keypointsInfo = document.getElementById('keypointsInfo');
+            const keypointsList = document.getElementById('keypointsList');
+            
+            keypointsInfo.style.display = 'block';
+            keypointsList.innerHTML = '';
+            
+            const validKeypoints = pose.keypoints
+                .filter(kp => kp.score > config.minConfidence)
+                .sort((a, b) => b.score - a.score);
+            
+            validKeypoints.forEach(kp => {
+                const item = document.createElement('div');
+                item.className = 'keypoint-item';
+                item.innerHTML = `
+                    <span class="keypoint-name">${kp.name}</span>
+                    <span class="keypoint-score">${(kp.score * 100).toFixed(1)}%</span>
+                `;
+                keypointsList.appendChild(item);
+            });
+        }
+
+        function updateStats() {
+            frameCount++;
+            document.getElementById('frameCount').textContent = frameCount;
+            
+            const now = Date.now();
+            if (now - lastTime >= 1000) {
+                fps = Math.round((frameCount / (now - lastTime)) * 1000);
+                document.getElementById('fps').textContent = fps;
+                frameCount = 0;
+                lastTime = now;
+            }
+        }
+
+        function updateStatus(status, message) {
+            const statusEl = document.getElementById('status');
+            statusEl.className = `status ${status}`;
+            statusEl.textContent = message;
+        }
+
+        function updateConfidence(value) {
+            config.minConfidence = parseFloat(value);
+            document.getElementById('confidenceValue').textContent = value;
+        }
+
+        function updateRadius(value) {
+            config.keypointRadius = parseInt(value);
+            document.getElementById('radiusValue').textContent = value;
+        }
+
+        function updateLineWidth(value) {
+            config.lineWidth = parseInt(value);
+            document.getElementById('lineValue').textContent = value;
+        }
+
+        // Initialize model on page load
+        initModel();
+    </script>
+</body>
+</html>
