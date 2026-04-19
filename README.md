@@ -29,3 +29,9 @@ Real time post detection in a browser over local network
 Located at [/web/post-detection.html](https://github.com/UmerCodez/WebsocketCAM-examples/blob/main/web/pose-detection.html)
 
 ![Alt text](https://github.com/UmerCodez/WebsocketCAM-examples/blob/main/assets/post-detection.gif)
+
+### Object Detection, Pose Detection and Face Detection
+A demo (Youtube) of detecting object, post and face simulataneously from a single video feed from WebsocketCAM app
+
+[![IMAGE ALT TEXT HERE](https://img.youtube.com/vi/Og8XJ5CCzoI/0.jpg)](https://www.youtube.com/watch?v=Og8XJ5CCzoI)
+
