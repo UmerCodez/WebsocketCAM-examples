@@ -7,6 +7,14 @@ Located at [/python/hand-keypoints](https://github.com/UmerCodez/WebsocketCAM-ex
 
 ![Alt Text](https://github.com/UmerCodez/WebsocketCAM-examples/blob/main/assets/hand-keypoint-detection.gif)
 
+
+### Object Detection (Python)
+Real-time object detection using MediaPipe and OpenCV from a live video stream received via a **WebSocket CAM** app
+
+Located at [/python/object-detection](https://github.com/UmerCodez/WebsocketCAM-examples/tree/main/python/object-detection)
+
+![Alt Text](https://github.com/UmerCodez/WebsocketCAM-examples/blob/main/assets/Object-Detection.gif)
+
 ### Live camera view in browser
 Real time camera view in brower over local network 
 
