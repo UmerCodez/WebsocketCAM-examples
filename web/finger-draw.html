@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FingerDraw — WebsocketCAM</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --panel: #111118;
+    --border: #1e1e2e;
+    --accent: #7c3aed;
+    --accent2: #06d6a0;
+    --accent3: #f72585;
+    --text: #e2e0f0;
+    --muted: #6b6880;
+    --draw-color: #06d6a0;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ─── TOP BAR ─────────────────────────────────────────── */
+  #topbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 20px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    z-index: 10;
+    flex-shrink: 0;
+  }
+
+  .logo {
+    font-size: 1.1rem;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, var(--accent2), var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    white-space: nowrap;
+  }
+
+  .sep { width: 1px; height: 24px; background: var(--border); }
+
+  #ws-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 14px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 0.85rem;
+    outline: none;
+    transition: border-color .2s;
+    min-width: 0;
+  }
+  #ws-input:focus { border-color: var(--accent); }
+  #ws-input::placeholder { color: var(--muted); }
+
+  .btn {
+    padding: 7px 18px;
+    border-radius: 8px;
+    border: none;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: opacity .15s, transform .1s;
+    white-space: nowrap;
+  }
+  .btn:active { transform: scale(0.96); }
+  .btn-connect { background: var(--accent); color: #fff; }
+  .btn-disconnect { background: #2a1a1a; color: var(--accent3); border: 1px solid var(--accent3); }
+  .btn:disabled { opacity: .4; cursor: default; }
+
+  #status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    flex-shrink: 0;
+    transition: background .3s;
+  }
+  #status-dot.connected { background: var(--accent2); box-shadow: 0 0 8px var(--accent2); }
+  #status-dot.error { background: var(--accent3); }
+
+  #status-text {
+    font-size: 0.78rem;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    white-space: nowrap;
+  }
+
+  /* ─── MAIN AREA ───────────────────────────────────────── */
+  #main {
+    flex: 1;
+    display: flex;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Canvas stack */
+  #canvas-stack {
+    flex: 1;
+    position: relative;
+    background: #000;
+  }
+
+  #video-canvas {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: contain;
+  }
+  #draw-canvas {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  #hand-canvas {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+
+  /* Placeholder when not connected */
+  #placeholder {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 12px;
+    color: var(--muted);
+  }
+  #placeholder svg { opacity: .25; }
+  #placeholder p { font-size: 0.9rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+
+  /* ─── SIDE PANEL ──────────────────────────────────────── */
+  #side {
+    width: 220px;
+    flex-shrink: 0;
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    gap: 16px;
+    overflow-y: auto;
+  }
+
+  .panel-title {
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* Gesture indicator */
+  #gesture-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    text-align: center;
+  }
+  #gesture-icon { font-size: 2.5rem; line-height: 1; margin-bottom: 6px; }
+  #gesture-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  #gesture-label.draw { color: var(--accent2); }
+  #gesture-label.stop { color: var(--accent3); }
+  #gesture-label.idle { color: var(--muted); }
+
+  /* Confidence bars */
+  .conf-row { display: flex; flex-direction: column; gap: 4px; }
+  .conf-label { display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--muted); font-family: 'DM Mono', monospace; }
+  .conf-track { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .conf-fill { height: 100%; border-radius: 2px; transition: width .2s; }
+  .conf-fill.draw-fill { background: var(--accent2); }
+  .conf-fill.stop-fill { background: var(--accent3); }
+
+  /* Color picker */
+  .color-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6px;
+  }
+  .color-swatch {
+    width: 100%; aspect-ratio: 1;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: transform .15s, border-color .15s;
+  }
+  .color-swatch:hover { transform: scale(1.15); }
+  .color-swatch.active { border-color: #fff; }
+
+  /* Brush size */
+  #brush-slider {
+    -webkit-appearance: none;
+    width: 100%; height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+  #brush-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+  }
+  .slider-row { display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--muted); font-family: 'DM Mono', monospace; margin-bottom: 6px; }
+
+  /* Action buttons */
+  .action-btn {
+    width: 100%;
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .action-btn:hover { border-color: var(--accent); background: #16163a; }
+  .action-btn.danger:hover { border-color: var(--accent3); background: #1a1016; }
+
+  /* Stats */
+  .stat-row { display: flex; justify-content: space-between; align-items: center; }
+  .stat-key { font-size: 0.7rem; color: var(--muted); font-family: 'DM Mono', monospace; }
+  .stat-val { font-size: 0.75rem; font-weight: 700; font-family: 'DM Mono', monospace; color: var(--text); }
+
+  /* Gesture guide */
+  .guide-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.75rem;
+  }
+  .guide-item .emo { font-size: 1.2rem; }
+  .guide-item .desc { color: var(--muted); line-height: 1.4; }
+  .guide-item .desc strong { color: var(--text); }
+
+  /* Finger cursor dot */
+  #cursor-dot {
+    position: absolute;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    border: 2px solid var(--draw-color);
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    transition: background .15s;
+    display: none;
+    z-index: 5;
+  }
+  #cursor-dot.drawing { background: var(--draw-color); opacity: .7; }
+
+  /* Loading spinner for MediaPipe */
+  #mp-loading {
+    position: fixed; inset: 0;
+    background: rgba(10,10,15,.9);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 16px;
+    z-index: 100;
+  }
+  .spinner {
+    width: 40px; height: 40px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #mp-loading p { font-size: 0.85rem; color: var(--muted); }
+
+  /* Toast */
+  #toast {
+    position: fixed;
+    bottom: 20px; left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 20px;
+    font-size: 0.82rem;
+    color: var(--text);
+    z-index: 200;
+    transition: transform .3s;
+    pointer-events: none;
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- Loading overlay -->
+<div id="mp-loading">
+  <div class="spinner"></div>
+  <p>Loading MediaPipe Hand Tracking…</p>
+</div>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <span class="logo">✦ FingerDraw</span>
+  <div class="sep"></div>
+  <input id="ws-input" type="text" placeholder="ws://192.168.x.x:8080" value="ws://192.168.1.100:8080" />
+  <button class="btn btn-connect" id="btn-connect" onclick="connectWS()">Connect</button>
+  <button class="btn btn-disconnect" id="btn-disconnect" onclick="disconnectWS()" disabled>Disconnect</button>
+  <div class="sep"></div>
+  <div id="status-dot"></div>
+  <span id="status-text">Disconnected</span>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+  <div id="canvas-stack">
+    <div id="placeholder">
+      <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+        <rect x="8" y="8" width="48" height="48" rx="8" stroke="#6b6880" stroke-width="2"/>
+        <circle cx="32" cy="28" r="8" stroke="#6b6880" stroke-width="2"/>
+        <path d="M16 52c0-8.837 7.163-16 16-16s16 7.163 16 16" stroke="#6b6880" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <p>Enter WebSocket address &amp; connect</p>
+    </div>
+    <canvas id="video-canvas"></canvas>
+    <canvas id="draw-canvas"></canvas>
+    <canvas id="hand-canvas"></canvas>
+    <div id="cursor-dot"></div>
+  </div>
+
+  <!-- SIDE PANEL -->
+  <div id="side">
+    <span class="panel-title">Gesture</span>
+    <div id="gesture-box">
+      <div id="gesture-icon">🤚</div>
+      <div id="gesture-label" class="idle">IDLE</div>
+    </div>
+
+    <div class="conf-row">
+      <div class="conf-label"><span>Draw (☝️)</span><span id="draw-conf-val">0%</span></div>
+      <div class="conf-track"><div class="conf-fill draw-fill" id="draw-conf-bar" style="width:0%"></div></div>
+    </div>
+    <div class="conf-row">
+      <div class="conf-label"><span>Stop (✋)</span><span id="stop-conf-val">0%</span></div>
+      <div class="conf-track"><div class="conf-fill stop-fill" id="stop-conf-bar" style="width:0%"></div></div>
+    </div>
+
+    <div class="sep" style="height:1px;width:100%;background:var(--border)"></div>
+
+    <span class="panel-title">Brush Color</span>
+    <div class="color-grid" id="color-grid"></div>
+
+    <span class="panel-title">Brush Size</span>
+    <div class="slider-row">
+      <span>Thin</span><span id="brush-val">6px</span><span>Thick</span>
+    </div>
+    <input type="range" id="brush-slider" min="2" max="30" value="6">
+
+    <div class="sep" style="height:1px;width:100%;background:var(--border)"></div>
+
+    <button class="action-btn danger" onclick="clearCanvas()">🗑 Clear Canvas</button>
+    <button class="action-btn" onclick="saveDrawing()">💾 Save Drawing</button>
+
+    <div class="sep" style="height:1px;width:100%;background:var(--border)"></div>
+
+    <span class="panel-title">Stats</span>
+    <div class="stat-row"><span class="stat-key">Frames</span><span class="stat-val" id="stat-frames">0</span></div>
+    <div class="stat-row"><span class="stat-key">Strokes</span><span class="stat-val" id="stat-strokes">0</span></div>
+    <div class="stat-row"><span class="stat-key">Video FPS</span><span class="stat-val" id="stat-fps">—</span></div>
+    <div class="stat-row"><span class="stat-key">Hand FPS</span><span class="stat-val" id="stat-hfps">—</span></div>
+
+    <div class="sep" style="height:1px;width:100%;background:var(--border)"></div>
+
+    <span class="panel-title">Hand Tracking Rate</span>
+    <div class="slider-row">
+      <span>Every frame</span><span id="mp-skip-val">Every 2nd</span><span>Every 5th</span>
+    </div>
+    <input type="range" id="mp-skip-slider" min="1" max="5" value="2" style="-webkit-appearance:none;width:100%;height:4px;background:var(--border);border-radius:2px;outline:none;cursor:pointer;">
+    <div style="font-size:0.68rem;color:var(--muted);margin-top:4px;">Lower = smoother tracking, higher = smoother video</div>
+
+    <div class="sep" style="height:1px;width:100%;background:var(--border)"></div>
+
+    <span class="panel-title">How To Use</span>
+    <div class="guide-item">
+      <span class="emo">☝️</span>
+      <span class="desc"><strong>Point finger</strong> — index up, others curled = Draw mode</span>
+    </div>
+    <div class="guide-item">
+      <span class="emo">✋</span>
+      <span class="desc"><strong>Open palm</strong> — all fingers up = Stop drawing</span>
+    </div>
+    <div class="guide-item">
+      <span class="emo">✊</span>
+      <span class="desc"><strong>Fist</strong> — all curled = Stop drawing</span>
+    </div>
+  </div>
+</div>
+
+<div id="toast">Saved!</div>
+
+<!-- MediaPipe via CDN -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+<script>
+// ── STATE ────────────────────────────────────────────────────────────────────
+let ws = null;
+let hands = null;
+let isDrawing = false;
+let lastX = null, lastY = null;
+let strokeCount = 0;
+let frameCount = 0;
+let fpsTimer = 0, fpsLast = 0;
+let currentColor = '#06d6a0';
+let brushSize = 6;
+let gestureHistory = [];
+const GESTURE_SMOOTH = 5;
+
+// Low-latency frame pipeline state
+let pendingBlob = null;      // only keep the LATEST blob, drop older ones
+let renderBusy = false;      // prevent concurrent renders
+let mpFrameSkip = 0;         // run MediaPipe every N rendered frames
+const MP_EVERY = 2;          // run hand tracking every 2nd rendered frame
+let lastBitmap = null;       // reuse for MP if no new frame yet
+
+// ── CANVAS SETUP ─────────────────────────────────────────────────────────────
+const videoCanvas  = document.getElementById('video-canvas');
+const drawCanvas   = document.getElementById('draw-canvas');
+const handCanvas   = document.getElementById('hand-canvas');
+const vCtx  = videoCanvas.getContext('2d', { alpha: false }); // alpha:false = faster composite
+const dCtx  = drawCanvas.getContext('2d');
+const hCtx  = handCanvas.getContext('2d');
+const stack = document.getElementById('canvas-stack');
+const cursorDot = document.getElementById('cursor-dot');
+
+let canvasW = 0, canvasH = 0;
+
+function resizeCanvases() {
+  const W = stack.clientWidth, H = stack.clientHeight;
+  if (W === canvasW && H === canvasH) return; // skip if unchanged
+  canvasW = W; canvasH = H;
+  // Preserve draw canvas content across resize
+  const tmp = document.createElement('canvas');
+  tmp.width = drawCanvas.width; tmp.height = drawCanvas.height;
+  tmp.getContext('2d').drawImage(drawCanvas, 0, 0);
+  [videoCanvas, drawCanvas, handCanvas].forEach(c => { c.width = W; c.height = H; });
+  if (tmp.width > 0) dCtx.drawImage(tmp, 0, 0, W, H);
+}
+window.addEventListener('resize', resizeCanvases);
+resizeCanvases();
+
+// ── COLOR SWATCHES ────────────────────────────────────────────────────────────
+const COLORS = ['#06d6a0','#f72585','#7c3aed','#ffd60a','#4cc9f0','#ff6b35','#ffffff','#a8dadc','#e63946','#2ec4b6'];
+const colorGrid = document.getElementById('color-grid');
+COLORS.forEach(c => {
+  const s = document.createElement('div');
+  s.className = 'color-swatch' + (c === currentColor ? ' active' : '');
+  s.style.background = c;
+  s.title = c;
+  s.onclick = () => {
+    document.querySelectorAll('.color-swatch').forEach(x => x.classList.remove('active'));
+    s.classList.add('active');
+    currentColor = c;
+    cursorDot.style.borderColor = c;
+    cursorDot.style.setProperty('--draw-color', c);
+  };
+  colorGrid.appendChild(s);
+});
+
+// ── BRUSH SLIDER ──────────────────────────────────────────────────────────────
+const slider = document.getElementById('brush-slider');
+slider.oninput = () => {
+  brushSize = +slider.value;
+  document.getElementById('brush-val').textContent = brushSize + 'px';
+};
+
+// ── WEBSOCKET ─────────────────────────────────────────────────────────────────
+function setStatus(state, msg) {
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-text');
+  dot.className = state;
+  txt.textContent = msg;
+}
+
+function connectWS() {
+  const url = document.getElementById('ws-input').value.trim();
+  if (!url) return;
+  try {
+    ws = new WebSocket(url);
+    ws.binaryType = 'blob'; // blob skips ArrayBuffer copy, faster for createImageBitmap
+    setStatus('', 'Connecting…');
+    document.getElementById('btn-connect').disabled = true;
+    document.getElementById('btn-disconnect').disabled = false;
+
+    ws.onopen = () => {
+      setStatus('connected', 'Connected — ' + url);
+      document.getElementById('placeholder').style.display = 'none';
+      showToast('🟢 Connected to WebsocketCAM');
+    };
+
+    ws.onmessage = (e) => {
+      if (typeof e.data === 'string') return;
+      // Drop-to-latest: discard any pending frame not yet rendered
+      pendingBlob = e.data;
+      if (!renderBusy) scheduleRender();
+    };
+
+    ws.onerror = () => { setStatus('error', 'Connection error'); };
+    ws.onclose = () => {
+      setStatus('', 'Disconnected');
+      document.getElementById('btn-connect').disabled = false;
+      document.getElementById('btn-disconnect').disabled = true;
+      document.getElementById('placeholder').style.display = 'flex';
+    };
+  } catch(err) { setStatus('error', 'Invalid URL'); document.getElementById('btn-connect').disabled = false; }
+}
+
+function disconnectWS() {
+  if (ws) ws.close();
+}
+
+// ── MEDIAPIPE HANDS SETUP ────────────────────────────────────────────────────
+function initMediaPipe() {
+  hands = new Hands({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+  });
+  hands.setOptions({
+    maxNumHands: 1,
+    modelComplexity: 1,
+    minDetectionConfidence: 0.7,
+    minTrackingConfidence: 0.6
+  });
+  hands.onResults((r) => onHandResultsWrapped(r));
+  hands.initialize().then(() => {
+    document.getElementById('mp-loading').style.display = 'none';
+  }).catch(() => {
+    document.getElementById('mp-loading').style.display = 'none';
+    showToast('⚠️ MediaPipe loaded (fallback mode)');
+  });
+}
+
+// ── RENDER LOOP (ImageBitmap — GPU decode, zero-copy) ────────────────────────
+function scheduleRender() {
+  if (!pendingBlob) { renderBusy = false; return; }
+  renderBusy = true;
+  const blob = pendingBlob;
+  pendingBlob = null; // consumed
+
+  createImageBitmap(blob).then(bitmap => {
+    resizeCanvases();
+    vCtx.save();
+    vCtx.scale(-1, 1);
+    vCtx.drawImage(bitmap, -canvasW, 0, canvasW, canvasH);
+    vCtx.restore();
+    frameCount++;
+
+    // Run MediaPipe every MP_EVERY frames to keep video smooth
+    mpFrameSkip++;
+    const mpEvery = window._MP_EVERY_OVERRIDE || MP_EVERY;
+    if (hands && mpFrameSkip >= mpEvery) {
+      mpFrameSkip = 0;
+      lastBitmap = bitmap;
+      hands.send({ image: bitmap }).catch(() => {}).finally(() => {
+        bitmap.close && bitmap.close();
+        scheduleRender(); // next frame after MP done
+      });
+    } else {
+      bitmap.close && bitmap.close();
+      scheduleRender(); // next frame immediately
+    }
+  }).catch(() => { renderBusy = false; scheduleRender(); });
+}
+
+// ── GESTURE DETECTION ────────────────────────────────────────────────────────
+// Returns finger states: [thumb, index, middle, ring, pinky] - true = extended
+function getFingerStates(lm) {
+  // Tip and PIP landmarks
+  const tips = [4, 8, 12, 16, 20];
+  const pips = [3, 6, 10, 14, 18];
+  const mcps = [2, 5, 9, 13, 17];
+
+  const states = [];
+
+  // Thumb: compare x (left hand)
+  states.push(lm[4].x < lm[3].x);
+
+  // Other fingers: tip y < pip y means extended (inverted because y goes down)
+  for (let i = 1; i < 5; i++) {
+    states.push(lm[tips[i]].y < lm[pips[i]].y);
+  }
+  return states;
+}
+
+function classifyGesture(lm) {
+  const [thumb, index, middle, ring, pinky] = getFingerStates(lm);
+
+  // Draw: index up, others down
+  const drawScore = (index ? 1 : 0) + (!middle ? 0.4 : 0) + (!ring ? 0.3 : 0) + (!pinky ? 0.3 : 0);
+  const isPointGesture = index && !middle && !ring && !pinky;
+
+  // Stop/Open Palm: 3+ fingers extended
+  const extCount = [thumb, index, middle, ring, pinky].filter(Boolean).length;
+  const stopScore = extCount >= 3 ? extCount / 5 : 0;
+
+  return {
+    draw: isPointGesture ? Math.min(drawScore, 1) : drawScore * 0.3,
+    stop: stopScore,
+    gesture: isPointGesture ? 'draw' : (extCount >= 3 ? 'stop' : 'idle')
+  };
+}
+
+// Smooth gesture over N frames
+function smoothedGesture(g) {
+  gestureHistory.push(g);
+  if (gestureHistory.length > GESTURE_SMOOTH) gestureHistory.shift();
+  const counts = { draw: 0, stop: 0, idle: 0 };
+  gestureHistory.forEach(x => counts[x]++);
+  return Object.entries(counts).sort((a,b) => b[1]-a[1])[0][0];
+}
+
+// ── HAND RESULTS HANDLER ──────────────────────────────────────────────────────
+function onHandResults(results) {
+  hCtx.clearRect(0, 0, handCanvas.width, handCanvas.height);
+
+  if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+    cursorDot.style.display = 'none';
+    isDrawing = false;
+    updateGestureUI('idle', 0, 0);
+    lastX = lastY = null;
+    return;
+  }
+
+  const lm = results.multiHandLandmarks[0];
+
+  // Draw skeleton
+  drawHandSkeleton(lm);
+
+  // Classify
+  const { draw, stop, gesture } = classifyGesture(lm);
+  const smoothGesture = smoothedGesture(gesture);
+  updateGestureUI(smoothGesture, draw, stop);
+
+  // Index fingertip position (mirror X to match flipped video)
+  const ix = (1 - lm[8].x) * videoCanvas.width;
+  const iy = lm[8].y * videoCanvas.height;
+
+  // Move cursor dot
+  cursorDot.style.display = 'block';
+  cursorDot.style.left = ix + 'px';
+  cursorDot.style.top = iy + 'px';
+
+  if (smoothGesture === 'draw') {
+    cursorDot.className = 'drawing';
+    cursorDot.style.borderColor = currentColor;
+    cursorDot.style.backgroundColor = currentColor;
+
+    if (lastX !== null) {
+      dCtx.beginPath();
+      dCtx.moveTo(lastX, lastY);
+      dCtx.lineTo(ix, iy);
+      dCtx.strokeStyle = currentColor;
+      dCtx.lineWidth = brushSize;
+      dCtx.lineCap = 'round';
+      dCtx.lineJoin = 'round';
+      dCtx.stroke();
+    } else {
+      strokeCount++;
+      document.getElementById('stat-strokes').textContent = strokeCount;
+    }
+
+    if (!isDrawing) { isDrawing = true; }
+    lastX = ix; lastY = iy;
+  } else {
+    if (isDrawing) { isDrawing = false; lastX = lastY = null; }
+    cursorDot.className = '';
+    cursorDot.style.borderColor = currentColor;
+    cursorDot.style.backgroundColor = 'transparent';
+  }
+
+  // FPS
+  const now = performance.now();
+  fpsTimer++;
+  if (now - fpsLast > 1000) {
+    document.getElementById('stat-fps').textContent = fpsTimer;
+    fpsTimer = 0; fpsLast = now;
+  }
+  document.getElementById('stat-frames').textContent = frameCount;
+}
+
+// ── HAND SKELETON DRAWING ─────────────────────────────────────────────────────
+const HAND_CONNECTIONS = [
+  [0,1],[1,2],[2,3],[3,4],       // thumb
+  [0,5],[5,6],[6,7],[7,8],       // index
+  [0,9],[9,10],[10,11],[11,12],  // middle
+  [0,13],[13,14],[14,15],[15,16],// ring
+  [0,17],[17,18],[18,19],[19,20],// pinky
+  [5,9],[9,13],[13,17]           // palm
+];
+
+function drawHandSkeleton(lm) {
+  const W = handCanvas.width, H = handCanvas.height;
+
+  // Connections
+  hCtx.strokeStyle = 'rgba(255,255,255,0.25)';
+  hCtx.lineWidth = 1.5;
+  HAND_CONNECTIONS.forEach(([a, b]) => {
+    hCtx.beginPath();
+    hCtx.moveTo((1 - lm[a].x) * W, lm[a].y * H);
+    hCtx.lineTo((1 - lm[b].x) * W, lm[b].y * H);
+    hCtx.stroke();
+  });
+
+  // Landmarks
+  lm.forEach((p, i) => {
+    const isTip = [4,8,12,16,20].includes(i);
+    hCtx.beginPath();
+    hCtx.arc((1 - p.x) * W, p.y * H, isTip ? 5 : 3, 0, Math.PI * 2);
+    hCtx.fillStyle = isTip ? (i === 8 ? currentColor : 'rgba(255,255,255,0.7)') : 'rgba(255,255,255,0.4)';
+    hCtx.fill();
+  });
+}
+
+// ── UI UPDATES ────────────────────────────────────────────────────────────────
+function updateGestureUI(gesture, drawConf, stopConf) {
+  const icon = document.getElementById('gesture-icon');
+  const label = document.getElementById('gesture-label');
+
+  const map = {
+    draw: { icon: '☝️', text: 'DRAWING', cls: 'draw' },
+    stop: { icon: '✋', text: 'STOPPED', cls: 'stop' },
+    idle: { icon: '🤚', text: 'IDLE',    cls: 'idle' }
+  };
+  const g = map[gesture] || map.idle;
+  icon.textContent = g.icon;
+  label.textContent = g.text;
+  label.className = g.cls;
+
+  const dp = Math.round(drawConf * 100);
+  const sp = Math.round(stopConf * 100);
+  document.getElementById('draw-conf-bar').style.width = dp + '%';
+  document.getElementById('draw-conf-val').textContent = dp + '%';
+  document.getElementById('stop-conf-bar').style.width = sp + '%';
+  document.getElementById('stop-conf-val').textContent = sp + '%';
+}
+
+// ── ACTIONS ───────────────────────────────────────────────────────────────────
+function clearCanvas() {
+  dCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+  strokeCount = 0;
+  document.getElementById('stat-strokes').textContent = 0;
+  showToast('🗑 Canvas cleared');
+}
+
+function saveDrawing() {
+  const merged = document.createElement('canvas');
+  merged.width = videoCanvas.width;
+  merged.height = videoCanvas.height;
+  const mCtx = merged.getContext('2d');
+  mCtx.drawImage(videoCanvas, 0, 0);
+  mCtx.drawImage(drawCanvas, 0, 0);
+  const link = document.createElement('a');
+  link.download = 'fingerdraw-' + Date.now() + '.png';
+  link.href = merged.toDataURL('image/png');
+  link.click();
+  showToast('💾 Drawing saved!');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+let hfpsTimer = 0, hfpsLast = 0;
+
+function onHandResultsWrapped(results) {
+  hfpsTimer++;
+  const now = performance.now();
+  if (now - hfpsLast > 1000) {
+    document.getElementById('stat-hfps').textContent = hfpsTimer;
+    hfpsTimer = 0; hfpsLast = now;
+  }
+  onHandResults(results);
+}
+
+window.addEventListener('load', () => {
+  initMediaPipe();
+
+  document.getElementById('ws-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') connectWS();
+  });
+
+  const mpSkipSlider = document.getElementById('mp-skip-slider');
+  mpSkipSlider.oninput = () => {
+    const v = +mpSkipSlider.value;
+    // MP_EVERY is a const so we patch the closure variable
+    window._MP_EVERY_OVERRIDE = v;
+    document.getElementById('mp-skip-val').textContent =
+      v === 1 ? 'Every frame' : `Every ${v}${['','st','nd','rd','th','th'][v] || 'th'}`;
+  };
+});
+</script>
+</body>
+</html>
