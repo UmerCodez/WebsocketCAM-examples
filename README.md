@@ -25,7 +25,7 @@ Located at [/web/camera.html](https://github.com/UmerCodez/WebsocketCAM-examples
 ### Real time drawing
 Touchless drawing on a browser canvas using AI finger-tracking gestures
 
-Located at [/web/camera.html](https://github.com/UmerCodez/WebsocketCAM-examples/blob/main/web/finger-draw.html)
+Located at [/web/finger-draw.html](https://github.com/UmerCodez/WebsocketCAM-examples/blob/main/web/finger-draw.html)
 
 ![Alt text](https://github.com/UmerCodez/WebsocketCAM-examples/blob/main/assets/finger-drawing.gif)
 
